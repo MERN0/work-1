@@ -1,0 +1,8 @@
+# Lists which project guideline files are active for a given run. The loader
+# concatenates the active files' content into the system prompt for the
+# generation and verification agents. New project -> drop a file in this
+# directory + add a line here, no code change.
+
+projects:
+  default:
+    files: []   # e.g. ["default/naming_conventions.md"]

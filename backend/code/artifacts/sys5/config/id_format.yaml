@@ -1,0 +1,9 @@
+# Test Case ID format.
+# ARCHITECTURE.md Sec4.3/Sec8 Q2: "TMHC" in the reference workbook (TMHC_SQMTC_001...)
+# is treated here as a per-project prefix, not a distinct output format -- pending
+# your confirmation. Override per-project via project_guidelines manifest if needed.
+
+prefix: "TMHC_SQMTC"
+separator: "_"
+sequence_width: 3        # zero-padded: 001, 002, ...
+start_at: 1

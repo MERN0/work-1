@@ -1,0 +1,68 @@
+# Default output format. Column set + sheet layout reverse-engineered from the
+# reference workbook (sys5_test_cases.xlsx) supplied for this project -- see
+# ARCHITECTURE.md Sec4.1 for the source images this was built from, and Sec8 Q6/Q12
+# for open questions about sheet optionality and the Item_List Test type column.
+
+test_cases_sheet:
+  name: "Test_Cases"
+  columns:
+    - {key: test_case_id,       header: "Test Case ID"}
+    - {key: feature,             header: "Feature"}
+    - {key: applicable_variants, header: "Applicable Variants"}
+    - {key: requirement_ids,     header: "Requirement IDs"}
+    - {key: priority,            header: "Priority"}
+    - {key: mode_of_execution,   header: "Mode of Execution"}
+    - {key: description,         header: "Test case Description"}
+    - {key: test_phase,          header: "Test Phase"}
+    - {key: step_no,             header: "Step"}
+    - {key: step_text,           header: "Test steps"}
+    - {key: parameter_settings,  header: "Parameter Settings"}
+    - {key: parameter_units,     header: "Units"}
+    - {key: expected_value,      header: "Expected Value"}
+    - {key: expected_units,      header: "Units"}
+    - {key: execute_flag,        header: "Whether to execute the step"}
+    - {key: remarks,             header: "Remarks"}
+  # one row per step (not one cell holding all steps) -- matches the reference sheet
+  steps_layout: per_row
+  merge_columns_across_step_span:
+    - test_case_id
+    - feature
+    - applicable_variants
+    - requirement_ids
+    - priority
+    - mode_of_execution
+    - description
+  blank_rows_between_test_cases: 1
+
+include_sheets:
+  cover: true
+  test_pattern: true
+  item_list: true
+  configurable_parameters: true
+  traceability: true
+
+item_list_sheet:
+  name: "Item_List"
+  columns:
+    - {key: test_type,          header: "Test type"}   # Sec8 Q12: may need to drop this per "no explicit test-type labeling"
+    - {key: feature_name,       header: "Feature Name"}
+    - {key: test_case_id,       header: "Test Case ID"}
+    - {key: applicable_variants, header: "Applicable Variants"}
+    - {key: execution_required, header: "Execution Required"}
+    - {key: remarks,            header: "Remarks"}
+  write_test_type_column: false   # honoring "do not explicitly label test type in output" until Sec8 Q12 is resolved
+
+test_pattern_sheet:
+  name: "Test Pattern"
+
+configurable_parameters_sheet:
+  name: "Configurable_Parameters"
+
+cover_sheet:
+  name: "Cover"
+
+traceability_sheet:
+  name: "Traceability"
+  columns:
+    - {key: test_case_id,    header: "Test Case ID"}
+    - {key: requirement_ids, header: "Requirement IDs"}

@@ -1,0 +1,19 @@
+# Junk/heading-row exclusion heuristics, applied after the sys-qualification
+# keyword filter. Kept in config (not hardcoded) so a real sheet layout can add
+# rules without touching preprocessing.py.
+
+min_non_empty_cells: 2          # rows with fewer non-empty cells than this are dropped
+max_empty_fraction: 0.85        # rows more than this fraction empty are dropped
+
+heading_patterns:                # case-insensitive; a row matching any of these in its first cell is dropped
+  - "^requirement\\s*id$"
+  - "^s\\.?\\s*no\\.?$"
+  - "^sr\\.?\\s*no\\.?$"
+  - "^#$"
+  - "^notes?$"
+  - "^legend$"
+
+filter_column: null               # null = search whole row for the sys-qualification keyword; set to a column name to restrict
+match_keywords:
+  - "sys qualification"
+  - "sys5"

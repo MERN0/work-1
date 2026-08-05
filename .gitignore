@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SYS5 pipeline run artifacts (checkpoints, logs, generated workbooks) -- not source
+backend/code/artifacts/sys5/state/run_*
+backend/code/artifacts/sys5/output/
