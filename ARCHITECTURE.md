@@ -89,13 +89,34 @@ producing the combinatorial design shown in the `Test Pattern` tab (fixed factor
 constant, variable factors swept per test case). Whether that design table is emitted
 by this node or reconstructed in postprocessing is an open question (§8).
 
+- **Step ordering (hard rule).** Every test case's step sequence starts with
+  `Test_Start` as step 1 and ends with `End_of_Test` as the last step, regardless of
+  phase count or how many steps fall in between. This brackets the
+  PRECONDITION→ACTION→POSTCONDITION sequence, not just the ACTION phase.
+- **Test-type coverage.** For a given cluster, the set of generated test cases must
+  collectively exercise: functionality check, stress test, boundary value check,
+  invalid values check, and load test — whichever apply to that requirement's testable
+  behavior — by varying inputs, ranges, and situations in the steps/description, not
+  by every cluster producing one of each. The generator decides how many test cases
+  and which types are actually applicable per cluster (a purely informational
+  requirement may not have a meaningful stress/load case, for instance).
+- **No explicit test-type labeling in output.** The generated `TestCase` content
+  (description, objective, steps) must not name which of the above categories a given
+  test case belongs to — coverage should be evident from the situations/ranges
+  described, not from a tag. This conflicts with the reference workbook's `Item_List`
+  sheet, which does carry an explicit `Test type` column (`Normal_system` /
+  `Boundary`, §4.1c) — flagged as an open question in §8 rather than silently
+  resolved either way.
+
 3.5. `verification_correction_agent` (LLM, loop, max 2 attempts) — checks: correct use
 of supporting docs, traceability accuracy, steps-vs-expected-results count parity,
 correct `set`/`wait`/`verify` usage. **Revised**: must also validate against whatever
-step vocabulary config comes out of §8's step-grammar question, and check phase
+step vocabulary config comes out of §8's step-grammar question, check phase
 completeness (every test case has at least an ACTION phase; PRE/POST optional per
-config). Still-failing-after-2 → keep the test case, `needs_review = true`. Never drop,
-never halt the run.
+config), and enforce the step-ordering rule (step 1 is always `Test_Start`, last step
+is always `End_of_Test`) and the no-explicit-test-type-label rule from §3.4 — both
+treated as hard corrections, not soft suggestions. Still-failing-after-2 → keep the
+test case, `needs_review = true`. Never drop, never halt the run.
 
 3.6. `postprocess` (pure Python) — verified test cases → workbook(s) per §4.
 
@@ -205,6 +226,14 @@ Expected Value/Units columns rather than being a single `keyword + expression`
 string. This is a significant deviation from §7 and reshapes the `TestStep` schema
 (§6) — not something to silently reconcile; needs your call in §8.
 
+**Confirmed bracketing rule** (not open — this one you specified directly): step 1 of
+every test case is always `Test_Start`, and the last step is always `End_of_Test`,
+independent of phase count or how many `set`/`wait`/`verify`/compound steps sit
+between them. This applies uniformly across all three phases (PRECONDITION through
+POSTCONDITION count as one continuous step sequence for this purpose, matching the
+reference sheet where step numbering runs 1→N across a whole test case, not
+restarting per phase).
+
 ### 4.5 Formatter registry
 Unchanged shape from the master prompt (`OutputFormatter` ABC, `FORMATTERS` dict).
 What's unresolved is whether `"default"` and `"tmhc"` are actually two different
@@ -239,9 +268,9 @@ Revised / new, based on the reference workbook:
 
 - `TestPatternFactor` — `name, element, ease_of_adjustment` (new — Test Pattern tab, §4.1b).
 - `TestPatternRow` — `test_case_no, fixed_values: dict[str, str], variable_values: dict[str, str]` (new).
-- `TestStep` — revised: `step_no: int, phase: Literal["precondition","action","postcondition"], keyword: str, raw_text: str, parameters: dict[str, str] | None, parameter_units: str | None, expected_value: str | None, expected_units: str | None, execute: bool = True, remarks: str | None`. `keyword` is validated against a config-driven vocabulary (§8) rather than a hardcoded 3-value `Literal`, since the reference data already exceeds `set/wait/verify`.
-- `TestCase` — revised: adds `test_type: Literal["normal_system","boundary"] | str` (Item_List tab) and groups `steps` by phase rather than a flat list; everything else (`id, feature, module, variant, traceability, objective, description, precondition, test_input_data, mode_of_execution, priority, odc_trigger, needs_review`) unchanged.
-- `ItemListEntry` — new — `test_type, feature_name, test_case_id, applicable_variants: List[str], execution_required: bool, remarks`.
+- `TestStep` — revised: `step_no: int, phase: Literal["precondition","action","postcondition"], keyword: str, raw_text: str, parameters: dict[str, str] | None, parameter_units: str | None, expected_value: str | None, expected_units: str | None, execute: bool = True, remarks: str | None`. `keyword` is validated against a config-driven vocabulary (§8) rather than a hardcoded 3-value `Literal`, since the reference data already exceeds `set/wait/verify`. A model-level validator enforces `steps[0].keyword == "Test_Start"` and `steps[-1].keyword == "End_of_Test"` for every `TestCase` — this is the one grammar rule that's fixed regardless of how §8's broader vocabulary question resolves.
+- `TestCase` — revised: groups `steps` by phase rather than a flat list; everything else (`id, feature, module, variant, traceability, objective, description, precondition, test_input_data, mode_of_execution, priority, odc_trigger, needs_review`) unchanged. **No `test_type` field on this model** — test-type coverage (functionality/stress/boundary/invalid-values/load) is a generation-time planning concern (§3.4), not something serialized onto the test case or exposed in `Test_Cases` sheet content. Whether `ItemListEntry` still carries a `test_type` tag is the open question below.
+- `ItemListEntry` — new — `feature_name, test_case_id, applicable_variants: List[str], execution_required: bool, remarks`, **plus** an optional `test_type` field pending §8 — the reference workbook's `Item_List` tab has this column (`Normal_system`/`Boundary`) but your new instruction says not to expose test-type labeling in output, so this field may need to be dropped or kept internal-only rather than written to the sheet.
 - `ConfigurableParameterEntry` — new — `name, description, values_by_variant: dict[str, str]`, mirrors the Configurable_Parameters tab for both supporting-doc ingestion and output regeneration.
 
 ---
@@ -318,6 +347,23 @@ Sources: [langgraph-checkpoint · PyPI](https://pypi.org/project/langgraph-check
     itself (§4.1d gives the *columns*, but not things like ID zero-padding width,
     which fields are mandatory vs. optional, or validation rules) — worth providing
     explicitly even though the reference workbook covers most of it.
+12. **`Item_List`'s `Test type` column vs. "no explicit test-type labeling."** The
+    reference workbook's `Item_List` tab explicitly tags each test case
+    `Normal_system` or `Boundary`. Your new instruction says the output must not
+    explicitly state which test case is which type, and coverage of
+    functionality/stress/boundary/invalid-values/load testing should instead be
+    implicit in the description/steps. Three ways to reconcile, need your pick:
+    (a) drop the `Test type` column from `Item_List` entirely; (b) keep the column but
+    only for a coarser purpose unrelated to the five test-type categories (e.g. just
+    "Normal_system" vs. some other axis, if `Normal_system`/`Boundary` in the example
+    meant something other than test-type categorization); (c) generate the column
+    internally for planning/traceability but omit it from the written sheet. This
+    doc assumes nothing here yet.
+13. **Test-type coverage vs. the `Test Pattern` sheet.** If stress/boundary/invalid/load
+    variations are expressed as extra rows in the `Test Pattern` combinatorial table
+    (§4.1b) — e.g. a "Variable Factor" swept to an out-of-range value for a boundary
+    case — that would tie §3.4's new coverage rule directly to an existing sheet
+    instead of inventing new structure. Confirm if that's the intended mechanism.
 
 ---
 
