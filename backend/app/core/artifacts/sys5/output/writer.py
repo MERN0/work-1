@@ -1,8 +1,8 @@
 """The template-agnostic workbook writer.
 
 Consumes an :class:`OutputTemplate`'s column and sheet specs and its emitted rows. All
-the openpyxl mechanics — merging, banding, widths, freezing — live here, so a new
-template declares a layout rather than reimplementing spreadsheet plumbing.
+the openpyxl mechanics — merging, widths, freezing — live here, so a new template
+declares a layout rather than reimplementing spreadsheet plumbing.
 """
 
 from __future__ import annotations
@@ -19,7 +19,6 @@ from .base import ColumnSpec, OutputTemplate, RenderContext, RenderResult, Row
 from .styles import (
     BORDER,
     CENTER_TOP,
-    PHASE_FILLS,
     TOP_LEFT,
     TOP_WRAP,
     freeze_and_filter,
@@ -72,7 +71,12 @@ def render_workbook(
 
 
 def _write_test_cases(worksheet: Worksheet, columns: list[ColumnSpec], rows: list[Row]) -> None:
-    """Write the header, the data rows, then the merges and banding."""
+    """Write the header, the data rows, then the merges.
+
+    Rows are left on a plain white background — no per-phase colour banding — matching
+    the reference workbook's grid: bordered cells, a shaded header row, and merges doing
+    the work of showing structure.
+    """
     for index, column in enumerate(columns, start=1):
         worksheet.cell(row=HEADER_ROW, column=index, value=column.header)
     style_header_row(worksheet, HEADER_ROW, len(columns))
@@ -83,13 +87,10 @@ def _write_test_cases(worksheet: Worksheet, columns: list[ColumnSpec], rows: lis
         if row.blank:
             continue
 
-        fill = PHASE_FILLS.get(row.phase)
         for index, column in enumerate(columns, start=1):
             cell = worksheet.cell(row=excel_row, column=index, value=row.values.get(column.key, ""))
             cell.alignment = TOP_WRAP if column.wrap else TOP_LEFT
             cell.border = BORDER
-            if fill is not None:
-                cell.fill = fill
 
     _apply_merges(worksheet, columns, rows)
     freeze_and_filter(worksheet, HEADER_ROW, len(columns), len(rows))

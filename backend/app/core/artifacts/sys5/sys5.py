@@ -17,6 +17,8 @@ data cannot reach the output.
 from __future__ import annotations
 
 import logging
+import os
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
@@ -27,7 +29,7 @@ from .llm import LLMNotConfiguredError, StructuredCaller, build_chat_model
 from .output import UnknownTemplateError, available, resolve
 from .projects import resolve as resolve_profile
 from .settings import Sys5Settings
-from .utils.io import discover_workbooks, ensure_dir, zip_files
+from .utils.io import discover_workbooks, ensure_dir
 from .utils.json_store import JsonStore, new_run_id
 
 logger = logging.getLogger(__name__)
@@ -197,17 +199,64 @@ def _build_caller(settings: Sys5Settings) -> StructuredCaller | None:
 
 
 def _finalise(produced: list[Path], settings: Sys5Settings) -> Path:
-    """Return the single workbook, or zip several of them.
+    """Return the single workbook, or zip every file in the output directory.
 
     Only the workbook (or the zip) is left in the caller's output directory; every
-    intermediate JSON stays in the run's working directory.
+    intermediate JSON stays in the run's working directory. The zip step itself is kept
+    identical to the original artifact-generator convention: zip everything already in
+    ``output_dir`` rather than tracking a separate file list.
     """
     if len(produced) == 1:
         logger.info("[sys5] done: %s", produced[0])
         return produced[0]
 
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    archive = settings.output_dir / f"sys5_{settings.project_name}_{stamp}.zip"
-    zip_files(produced, archive)
-    logger.info("[sys5] done: %d workbooks zipped into %s", len(produced), archive)
-    return archive
+    output_dir = settings.output_dir
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    zip_path = output_dir / f"sys5_{settings.project_name}_{timestamp}.zip"
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename in os.listdir(output_dir):
+            file_path = output_dir / filename
+            if file_path.is_file() and not filename.endswith(".zip"):
+                zf.write(file_path, arcname=filename)
+
+    logger.info("[sys5] done: %d workbooks zipped into %s", len(produced), zip_path)
+    return zip_path
+
+
+if __name__ == "__main__":
+    # Manual test run. Since this module uses package-relative imports, run it as a
+    # module from the `backend` directory:
+    #   cd backend && python -m app.core.artifacts.sys5.sys5
+    # Requires SYS5_LLM_BASE_URL / SYS5_LLM_API_KEY (or OPENAI_BASE_URL / OPENAI_API_KEY)
+    # to be set, and _input_dir/ to hold the TMHC input workbooks.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s"
+    )
+
+    _config = {
+        "project_name": "tmhc_demo",
+        "username": "test@tataelxsi.co.in",
+        "version": "V1.0",
+        "domain": "automotive",
+        "artifact": "SYS5",
+        "model": "llm-1-gpt-oss-120b",
+        "input_folder_path": "_input_dir",
+        "output_folder_path": "_output_dir",
+        "output_dir": "_output_dir",
+        "uploaded_files": [],
+        "agent_chain": [
+            {"agent_name": "generation_agent", "agent_version": "V1.0", "prompt_content": ""},
+            {"agent_name": "verification_agent", "agent_version": "V1.0", "prompt_content": ""},
+            {"agent_name": "qa_agent", "agent_version": "V1.0", "prompt_content": ""},
+        ],
+        "req_filename": "TE_TMHC_HILS Development & Testing_System Requirements.xlsx",
+        "req_sheet_name": "005",
+    }
+
+    try:
+        result_path = generate(_config)
+    except Sys5Error:
+        logger.exception("[sys5] run failed")
+        raise SystemExit(1)
+
+    print(f"\n[sys5] output written to: {result_path}")

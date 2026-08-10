@@ -15,13 +15,6 @@ LABEL_FONT = Font(bold=True, size=11)
 TABLE_HEADER_FILL = PatternFill("solid", fgColor="D9E2F3")
 TABLE_HEADER_FONT = Font(bold=True, size=11)
 
-#: Soft banding per phase so a reader can see the three parts of a case at a glance.
-PHASE_FILLS = {
-    "PRECONDITION": PatternFill("solid", fgColor="EDF3FB"),
-    "ACTION": PatternFill("solid", fgColor="FFFFFF"),
-    "POSTCONDITION": PatternFill("solid", fgColor="F4F0FA"),
-}
-
 _SIDE = Side(style="thin", color="BFBFBF")
 BORDER = Border(left=_SIDE, right=_SIDE, top=_SIDE, bottom=_SIDE)
 

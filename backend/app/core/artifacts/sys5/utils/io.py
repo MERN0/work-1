@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import zipfile
 from collections.abc import Iterable
 from pathlib import Path
 
@@ -48,16 +47,6 @@ def _is_workbook(path: Path) -> bool:
         and path.suffix.lower() in EXCEL_SUFFIXES
         and not path.name.startswith(_IGNORED_PREFIXES)
     )
-
-
-def zip_files(paths: Iterable[Path], destination: Path) -> Path:
-    """Zip ``paths`` (flat, by basename) into ``destination`` and return it."""
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    with zipfile.ZipFile(destination, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in paths:
-            if path.is_file():
-                archive.write(path, arcname=path.name)
-    return destination
 
 
 def ensure_dir(path: Path) -> Path:
