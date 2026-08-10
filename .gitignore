@@ -216,3 +216,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SYS5 run artifacts
+backend/app/core/artifacts/sys5/_work/
