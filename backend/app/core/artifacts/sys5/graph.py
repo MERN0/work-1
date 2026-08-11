@@ -43,6 +43,7 @@ from .nodes.selection import select_requirements
 from .output import OutputTemplate, RenderContext, render_workbook
 from .projects import ProjectProfile
 from .prompts import (
+    GeneratedStep,
     PlanResponse,
     StepsResponse,
     generator_prompt,
@@ -225,7 +226,7 @@ class Sys5Pipeline:
         if case is None:
             return {"generated": []}
 
-        case, result = self._validate_and_repair(case, task, identity, feature_context, case_index)
+        case, result = self._validate_and_repair(case, task, identity, case_index)
         case.issues = list(result.issues)
 
         if result.ok:
@@ -240,6 +241,18 @@ class Sys5Pipeline:
             _mark_unresolved(case, result)
 
         return {"generated": [case]}
+
+    def _steps_from_llm(self, prompt: str, tag: str) -> list[GeneratedStep] | None:
+        """Call the model for a set of steps; ``None`` on any failure so the caller can fall back."""
+        try:
+            response = self.caller.invoke(StepsResponse, self.system, prompt, tag=tag)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("[sys5] %s failed: %s", tag, exc)
+            return None
+        if not response.steps:
+            logger.warning("[sys5] %s returned no steps", tag)
+            return None
+        return response.steps
 
     def _generate(
         self,
@@ -261,20 +274,12 @@ class Sys5Pipeline:
             self.profile.start_marker,
             self.profile.end_marker,
         )
-        try:
-            response = self.caller.invoke(
-                StepsResponse, self.system, prompt, tag=f"generate:{task.plan.aspect}"
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error("[sys5] generation failed for %r: %s", task.plan.aspect, exc)
-            return None
-
-        if not response.steps:
-            logger.error("[sys5] generator returned no steps for %r", task.plan.aspect)
+        steps = self._steps_from_llm(prompt, tag=f"generate:{task.plan.aspect}")
+        if steps is None:
             return None
 
         return build_test_case(
-            response.steps, task.plan, task.requirement, identity, self.profile, case_index
+            steps, task.plan, task.requirement, identity, self.profile, case_index
         )
 
     def _validate_and_repair(
@@ -282,7 +287,6 @@ class Sys5Pipeline:
         case: TestCase,
         task,
         identity: FeatureIdentity,
-        feature_context: FeatureContext,
         case_index: int,
     ) -> tuple[TestCase, ValidationResult]:
         """Validate, then spend the correction budget on what the model must fix.
@@ -307,7 +311,7 @@ class Sys5Pipeline:
                 corrections,
                 result.codes(),
             )
-            repaired = self._repair(case, result, task, identity, feature_context, case_index)
+            repaired = self._repair(case, result, task, identity, case_index)
             if repaired is None:
                 break
             case = repaired
@@ -321,23 +325,15 @@ class Sys5Pipeline:
         result: ValidationResult,
         task,
         identity: FeatureIdentity,
-        feature_context: FeatureContext,
         case_index: int,
     ) -> TestCase | None:
         prompt = repair_prompt(case, result, task.vocabulary)
-        try:
-            response = self.caller.invoke(
-                StepsResponse, self.system, prompt, tag=f"repair:{case.tc_id}"
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.error("[sys5] repair call failed for %s: %s", case.tc_id, exc)
-            return None
-
-        if not response.steps:
+        steps = self._steps_from_llm(prompt, tag=f"repair:{case.tc_id}")
+        if steps is None:
             return None
 
         return build_test_case(
-            response.steps, task.plan, task.requirement, identity, self.profile, case_index
+            steps, task.plan, task.requirement, identity, self.profile, case_index
         )
 
     def render(self, state) -> dict:

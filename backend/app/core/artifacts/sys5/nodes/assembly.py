@@ -8,11 +8,7 @@ because it never sees them.
 
 from __future__ import annotations
 
-import logging
-
 from ..models import (
-    END_OF_TEST,
-    TEST_START,
     FeatureIdentity,
     Phase,
     Requirement,
@@ -23,8 +19,6 @@ from ..models import (
 from ..projects import ProjectProfile
 from ..prompts import GeneratedStep
 from ..utils.text import clean
-
-logger = logging.getLogger(__name__)
 
 
 def build_test_case(
@@ -79,43 +73,44 @@ def _to_step(generated: GeneratedStep, profile: ProjectProfile) -> TestStep:
 def _ensure_markers(case: TestCase, profile: ProjectProfile) -> None:
     """Add the bookend markers when the model omitted them.
 
-    Deterministically repairable, so it is repaired here rather than spent on a
-    correction round — that budget is better used on problems only the model can fix.
+    Deterministically repairable, so it is fixed here rather than spending a correction
+    round on it — that budget is better used on problems only the model can fix.
     """
-    if profile.start_marker:
-        has_start = any(s.text == profile.start_marker for s in case.steps)
-        if not has_start:
-            case.steps.insert(
-                0,
-                TestStep(
-                    phase=Phase.PRECONDITION,
-                    text=profile.start_marker,
-                    execute=profile.execute_value,
-                    remark="Start of the qualification test case execution",
-                ),
-            )
-        elif case.steps[0].text != profile.start_marker:
-            marker = next(s for s in case.steps if s.text == profile.start_marker)
-            case.steps.remove(marker)
-            marker.phase = Phase.PRECONDITION
-            case.steps.insert(0, marker)
+    _ensure_marker(case, profile, profile.start_marker, Phase.PRECONDITION, at_start=True)
+    _ensure_marker(case, profile, profile.end_marker, Phase.POSTCONDITION, at_start=False)
 
-    if profile.end_marker:
-        has_end = any(s.text == profile.end_marker for s in case.steps)
-        if not has_end:
-            case.steps.append(
-                TestStep(
-                    phase=Phase.POSTCONDITION,
-                    text=profile.end_marker,
-                    execute=profile.execute_value,
-                    remark="End of the qualification test case execution",
-                )
-            )
-        elif case.steps[-1].text != profile.end_marker:
-            marker = next(s for s in case.steps if s.text == profile.end_marker)
-            case.steps.remove(marker)
-            marker.phase = Phase.POSTCONDITION
-            case.steps.append(marker)
+
+def _ensure_marker(
+    case: TestCase, profile: ProjectProfile, text: str, phase: Phase, at_start: bool
+) -> None:
+    """Make sure ``text`` is the first (or last) step, inserting or repositioning it."""
+    if not text:
+        return
+
+    edge = None
+    if case.steps:
+        edge = case.steps[0] if at_start else case.steps[-1]
+    if edge is not None and edge.text == text:
+        return  # already exactly where it should be
+
+    existing = next((s for s in case.steps if s.text == text), None)
+    if existing is not None:
+        case.steps.remove(existing)
+        existing.phase = phase
+        marker = existing
+    else:
+        which = "Start" if at_start else "End"
+        marker = TestStep(
+            phase=phase,
+            text=text,
+            execute=profile.execute_value,
+            remark=f"{which} of the qualification test case execution",
+        )
+
+    if at_start:
+        case.steps.insert(0, marker)
+    else:
+        case.steps.append(marker)
 
 
 def _apply_traceability_remark(
@@ -133,8 +128,3 @@ def _apply_traceability_remark(
     first = case.steps[0]
     if other not in first.remark:
         first.remark = f"{first.remark} (traces to {other})".strip()
-
-
-def markers() -> tuple[str, str]:
-    """The default marker pair, for callers that need it without a profile."""
-    return TEST_START, END_OF_TEST

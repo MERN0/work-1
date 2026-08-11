@@ -32,39 +32,46 @@ DEFAULT_REQ_KEYWORDS = [
 ]
 
 
-def _env(*names: str, default: str | None = None) -> str | None:
-    """First non-empty value among ``names``, else ``default``."""
+def _env(*names: str) -> str:
+    """First non-empty environment variable among ``names``, else ``""``."""
     for name in names:
         value = os.environ.get(name)
-        if value not in (None, ""):
+        if value:
             return value
-    return default
+    return ""
 
 
-def _as_bool(value: Any, default: bool) -> bool:
-    if value is None or value == "":
+def _setting(get, key: str, *env_names: str, default: Any, cast: type = str) -> Any:
+    """Resolve one setting: config[key] > env vars (in order) > default.
+
+    A config value of ``0`` or ``False`` is a real, explicit setting and must be kept —
+    only ``None``/``""``/a missing key fall through to the environment and then the
+    default. ``cast`` may be ``str``, ``int``, ``float`` or ``bool``; a value that fails
+    to cast falls back to ``default`` rather than raising.
+    """
+    raw = get(key)
+    if raw in (None, ""):
+        raw = _env(*env_names)
+    if raw in (None, ""):
         return default
-    if isinstance(value, bool):
-        return value
-    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+    if cast is bool:
+        return str(raw).strip().lower() in {"1", "true", "yes", "y", "on"}
+    if cast in (int, float):
+        try:
+            return cast(str(raw).strip())
+        except ValueError:
+            return default
+    return str(raw)
 
 
-def _as_int(value: Any, default: int) -> int:
-    if value in (None, ""):
-        return default
-    try:
-        return int(str(value).strip())
-    except ValueError:
-        return default
-
-
-def _as_float(value: Any, default: float) -> float:
-    if value in (None, ""):
-        return default
-    try:
-        return float(str(value).strip())
-    except ValueError:
-        return default
+def _setting_list(get, key: str, *env_names: str, default: list[str] | None = None) -> list[str]:
+    """Same precedence as :func:`_setting`, but for a comma-separated list."""
+    raw = get(key) or _env(*env_names)
+    if not raw:
+        return list(default or [])
+    if isinstance(raw, str):
+        return [item.strip() for item in raw.split(",") if item.strip()]
+    return [str(item) for item in raw]
 
 
 class LLMSettings(BaseModel):
@@ -149,93 +156,73 @@ class Sys5Settings(BaseModel):
 
     @classmethod
     def from_config(cls, config: dict[str, Any]) -> Sys5Settings:
-        """Build settings from the caller's config dict plus the environment."""
+        """Build settings from the caller's config dict plus the environment.
+
+        Every scalar setting follows the same precedence — config value, then env
+        vars, then a default — via :func:`_setting`; lists go through
+        :func:`_setting_list`. A handful of fields (paths, the model name) need one
+        extra step and are resolved inline just below.
+        """
         get = config.get
+
+        def setting(key: str, *env: str, default: Any, cast: type = str) -> Any:
+            return _setting(get, key, *env, default=default, cast=cast)
+
+        def setting_list(key: str, *env: str, default: list[str] | None = None) -> list[str]:
+            return _setting_list(get, key, *env, default=default)
 
         output_dir = Path(get("output_folder_path") or get("output_dir") or ".").expanduser()
         input_dir = Path(get("input_folder_path") or ".").expanduser()
-
-        work_dir_raw = get("work_dir") or _env("SYS5_WORK_DIR") or ""
+        work_dir_raw = setting("work_dir", "SYS5_WORK_DIR", default="")
         work_dir = Path(work_dir_raw).expanduser() if work_dir_raw else Path(__file__).parent / "_work"
-
-        keywords_raw = get("req_keywords") or _env("SYS5_REQ_KEYWORDS") or ""
-        if isinstance(keywords_raw, str):
-            keywords = [k for k in (part.strip() for part in keywords_raw.split(",")) if k]
-        else:
-            keywords = list(keywords_raw)
-
-        variants_raw = get("available_variants") or _env("SYS5_AVAILABLE_VARIANTS") or ""
-        if isinstance(variants_raw, str):
-            variants = [v for v in (part.strip() for part in variants_raw.split(",")) if v]
-        else:
-            variants = list(variants_raw)
+        model = get("llm_model") or get("model") or _env("SYS5_LLM_MODEL") or "llm-1-gpt-oss-120b"
 
         llm = LLMSettings(
-            base_url=str(
-                get("llm_base_url") or _env("SYS5_LLM_BASE_URL", "OPENAI_BASE_URL") or ""
-            ),
-            api_key=str(get("llm_api_key") or _env("SYS5_LLM_API_KEY", "OPENAI_API_KEY") or ""),
-            model=str(
-                get("llm_model") or get("model") or _env("SYS5_LLM_MODEL") or "llm-1-gpt-oss-120b"
-            ),
-            temperature=_as_float(
-                get("llm_temperature", _env("SYS5_LLM_TEMPERATURE")), 0.0
-            ),
-            max_tokens=_as_int(get("llm_max_tokens", _env("SYS5_LLM_MAX_TOKENS")), 8192),
-            context_limit=_as_int(
-                get("llm_context_limit", _env("SYS5_LLM_CONTEXT_LIMIT")), 100_000
-            ),
-            context_reserve=_as_int(
-                get("llm_context_reserve", _env("SYS5_LLM_CONTEXT_RESERVE")), 8_000
-            ),
-            timeout=_as_int(get("llm_timeout", _env("SYS5_LLM_TIMEOUT")), 180),
-            max_retries=_as_int(get("llm_max_retries", _env("SYS5_LLM_MAX_RETRIES")), 3),
-            max_concurrency=_as_int(
-                get("llm_max_concurrency", _env("SYS5_LLM_MAX_CONCURRENCY")), 3
-            ),
-            structured_method=str(
-                get("llm_structured_method")
-                or _env("SYS5_LLM_STRUCTURED_METHOD")
-                or "auto"
-            ).lower(),  # type: ignore[arg-type]
+            base_url=setting("llm_base_url", "SYS5_LLM_BASE_URL", "OPENAI_BASE_URL", default=""),
+            api_key=setting("llm_api_key", "SYS5_LLM_API_KEY", "OPENAI_API_KEY", default=""),
+            model=model,
+            temperature=setting("llm_temperature", "SYS5_LLM_TEMPERATURE", default=0.0, cast=float),
+            max_tokens=setting("llm_max_tokens", "SYS5_LLM_MAX_TOKENS", default=8192, cast=int),
+            context_limit=setting("llm_context_limit", "SYS5_LLM_CONTEXT_LIMIT", default=100_000, cast=int),
+            context_reserve=setting("llm_context_reserve", "SYS5_LLM_CONTEXT_RESERVE", default=8_000, cast=int),
+            timeout=setting("llm_timeout", "SYS5_LLM_TIMEOUT", default=180, cast=int),
+            max_retries=setting("llm_max_retries", "SYS5_LLM_MAX_RETRIES", default=3, cast=int),
+            max_concurrency=setting("llm_max_concurrency", "SYS5_LLM_MAX_CONCURRENCY", default=3, cast=int),
+            structured_method=setting(
+                "llm_structured_method", "SYS5_LLM_STRUCTURED_METHOD", default="auto"
+            ).lower(),
         )
 
         return cls(
-            project_name=str(get("project_name") or "default_project"),
-            username=str(get("username") or "default_user"),
-            version=str(get("version") or "v1.0"),
-            domain=str(get("domain") or ""),
-            artifact=str(get("artifact") or "SYS5"),
-            language=str(get("language") or ""),
+            project_name=setting("project_name", default="default_project"),
+            username=setting("username", default="default_user"),
+            version=setting("version", default="v1.0"),
+            domain=setting("domain", default=""),
+            artifact=setting("artifact", default="SYS5"),
+            language=setting("language", default=""),
             input_dir=input_dir,
             output_dir=output_dir,
             work_dir=work_dir,
             uploaded_files=[str(f) for f in (get("uploaded_files") or [])],
-            req_filename=str(get("req_filename") or ""),
-            req_sheet_name=str(get("req_sheet_name") or "").strip(),
-            req_keywords=keywords or list(DEFAULT_REQ_KEYWORDS),
-            fuzzy_threshold=_as_int(get("fuzzy_threshold", _env("SYS5_FUZZY_THRESHOLD")), 85),
-            available_variants=variants,
-            output_template=str(
-                get("output_template") or _env("SYS5_OUTPUT_TEMPLATE") or ""
-            ).strip(),
-            output_format=str(
-                get("output_format") or _env("SYS5_OUTPUT_FORMAT") or "excel"
-            ).strip().lower(),
-            project_profile=str(
-                get("project_profile") or _env("SYS5_PROJECT_PROFILE") or ""
-            ).strip(),
-            max_validation_attempts=_as_int(
-                get("max_validation_attempts", _env("SYS5_MAX_VALIDATION_ATTEMPTS")), 2
+            req_filename=setting("req_filename", default=""),
+            req_sheet_name=setting("req_sheet_name", default="").strip(),
+            req_keywords=setting_list("req_keywords", "SYS5_REQ_KEYWORDS", default=DEFAULT_REQ_KEYWORDS),
+            fuzzy_threshold=setting("fuzzy_threshold", "SYS5_FUZZY_THRESHOLD", default=85, cast=int),
+            available_variants=setting_list("available_variants", "SYS5_AVAILABLE_VARIANTS"),
+            output_template=setting("output_template", "SYS5_OUTPUT_TEMPLATE", default="").strip(),
+            output_format=setting("output_format", "SYS5_OUTPUT_FORMAT", default="excel").strip().lower(),
+            project_profile=setting("project_profile", "SYS5_PROJECT_PROFILE", default="").strip(),
+            max_validation_attempts=setting(
+                "max_validation_attempts", "SYS5_MAX_VALIDATION_ATTEMPTS", default=2, cast=int
             ),
-            max_correction_attempts=_as_int(
-                get("max_correction_attempts", _env("SYS5_MAX_CORRECTION_ATTEMPTS")), 1
+            max_correction_attempts=setting(
+                "max_correction_attempts", "SYS5_MAX_CORRECTION_ATTEMPTS", default=1, cast=int
             ),
-            keep_intermediates=_as_bool(
-                get("keep_intermediates", _env("SYS5_KEEP_INTERMEDIATES")), True
+            keep_intermediates=setting(
+                "keep_intermediates", "SYS5_KEEP_INTERMEDIATES", default=True, cast=bool
             ),
-            checkpoint_db=str(get("checkpoint_db") or _env("SYS5_CHECKPOINT_DB") or ""),
-            log_level=str(get("log_level") or _env("SYS5_LOG_LEVEL") or "INFO").upper(),
+            checkpoint_db=setting("checkpoint_db", "SYS5_CHECKPOINT_DB", default=""),
+            log_level=setting("log_level", "SYS5_LOG_LEVEL", default="INFO").upper(),
             llm=llm,
             agent_chain=list(get("agent_chain") or []),
         )
