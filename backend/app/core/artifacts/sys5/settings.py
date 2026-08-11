@@ -119,6 +119,10 @@ class Sys5Settings(BaseModel):
     req_keywords: list[str] = Field(default_factory=lambda: list(DEFAULT_REQ_KEYWORDS))
     fuzzy_threshold: int = 85
 
+    #: Full list of applicable variants (e.g. A1, A2, B, C1...). Empty means "use the
+    #: project profile's list" — see `generate()` in sys5.py.
+    available_variants: list[str] = Field(default_factory=list)
+
     # --- output -------------------------------------------------------------
     output_template: str = "tmhc_v1"
     output_format: str = "excel"
@@ -159,6 +163,12 @@ class Sys5Settings(BaseModel):
             keywords = [k for k in (part.strip() for part in keywords_raw.split(",")) if k]
         else:
             keywords = list(keywords_raw)
+
+        variants_raw = get("available_variants") or _env("SYS5_AVAILABLE_VARIANTS") or ""
+        if isinstance(variants_raw, str):
+            variants = [v for v in (part.strip() for part in variants_raw.split(",")) if v]
+        else:
+            variants = list(variants_raw)
 
         llm = LLMSettings(
             base_url=str(
@@ -205,6 +215,7 @@ class Sys5Settings(BaseModel):
             req_sheet_name=str(get("req_sheet_name") or "").strip(),
             req_keywords=keywords or list(DEFAULT_REQ_KEYWORDS),
             fuzzy_threshold=_as_int(get("fuzzy_threshold", _env("SYS5_FUZZY_THRESHOLD")), 85),
+            available_variants=variants,
             output_template=str(
                 get("output_template") or _env("SYS5_OUTPUT_TEMPLATE") or ""
             ).strip(),

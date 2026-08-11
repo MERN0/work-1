@@ -28,11 +28,23 @@ STUB_FONT = Font(italic=True, color="808080", size=10)
 
 
 def style_header_row(worksheet: Worksheet, row: int, columns: int) -> None:
-    """Apply the header look to one row."""
+    """Apply the main test-case-sheet header look to one row."""
     for index in range(1, columns + 1):
         cell = worksheet.cell(row=row, column=index)
         cell.fill = HEADER_FILL
         cell.font = HEADER_FONT
+        cell.alignment = CENTER
+        cell.border = BORDER
+
+
+def style_table_header_row(
+    worksheet: Worksheet, row: int, start_column: int, columns: int
+) -> None:
+    """Apply the lighter reference-table header look used on the auxiliary sheets."""
+    for index in range(start_column, start_column + columns):
+        cell = worksheet.cell(row=row, column=index)
+        cell.fill = TABLE_HEADER_FILL
+        cell.font = TABLE_HEADER_FONT
         cell.alignment = CENTER
         cell.border = BORDER
 

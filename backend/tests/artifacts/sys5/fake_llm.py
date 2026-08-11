@@ -30,6 +30,7 @@ def _plan_payload() -> dict:
                 "ranges_or_boundaries": ["10 (Config_Tol_Spd)"],
                 "priority": "P1",
                 "variant": "A1",
+                "test_type": "Boundary",
                 "precondition_outline": "Power on, forward, park brake released",
                 "action_outline": "Press the accelerator and check the displayed speed",
                 "postcondition_outline": "Release the pedal and power down",

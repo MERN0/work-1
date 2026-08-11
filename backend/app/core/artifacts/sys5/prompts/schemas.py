@@ -28,6 +28,14 @@ class PlannedCase(BaseModel):
     )
     priority: str = Field(default="P1", description="P1, P2 or P3")
     variant: str = Field(default="", description="Variant from the requirement, e.g. A1")
+    test_type: str = Field(
+        default="Normal_System",
+        description=(
+            "'Boundary' when this case exists specifically to probe a stated limit, "
+            "edge value or out-of-range condition; 'Normal_System' for ordinary "
+            "behaviour coverage"
+        ),
+    )
     precondition_outline: str = Field(default="", description="One line: the starting state")
     action_outline: str = Field(default="", description="One line: the stimulus and checks")
     postcondition_outline: str = Field(default="", description="One line: how the system is restored")

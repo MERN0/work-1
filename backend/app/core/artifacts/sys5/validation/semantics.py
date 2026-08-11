@@ -15,8 +15,10 @@ from ..models import AppParameter, ModelSignal, TestCase, ValidationIssue, Vocab
 from ..utils.text import clean, normalize
 from .grammar import ParsedStep, StepKind
 
-#: A tolerance reference inside an expected value: ``10 (Config_Tol_Spd)``.
-_TOLERANCE_REF_RE = re.compile(r"\(\s*(?P<name>[A-Za-z_]\w*)\s*\)")
+#: A tolerance reference inside an expected value: ``10 (Config_Tol_Spd)``. Public
+#: because the Configurable_Parameters output sheet reuses it to find every tolerance a
+#: run's steps actually reference.
+TOLERANCE_REF_RE = re.compile(r"\(\s*(?P<name>[A-Za-z_]\w*)\s*\)")
 
 #: A leading numeric value, optionally signed/decimal, possibly with a comparison.
 _NUMERIC_RE = re.compile(r"^[<>]?/?=?\s*(?P<value>[-+]?\d+(?:\.\d+)?)")
@@ -233,7 +235,7 @@ def _check_tolerance_refs(
     issues: list[ValidationIssue] = []
     for field_name in ("expected", "parameter"):
         text = clean(getattr(step, field_name))
-        for match in _TOLERANCE_REF_RE.finditer(text):
+        for match in TOLERANCE_REF_RE.finditer(text):
             name = match.group("name")
             if not name.lower().startswith("config_tol"):
                 continue

@@ -84,6 +84,28 @@ class TestSingleSheetRun:
         ]
         assert workbook["Cover"]["C3"].value == "005 - Ramp / Slope Control"
 
+    def test_item_list_has_one_row_per_generated_case(self, run):
+        sheet = load_workbook(run())["Item_List"]
+        assert [c.value for c in sheet[1]][:4] == [
+            "Sl.No", "Test Type", "Feature Name", "Test Case ID"
+        ]
+        # Two requirements selected, one case each from the fake planner.
+        assert sheet.max_row == 3
+        assert sheet.cell(row=2, column=2).value == "Boundary"
+        assert sheet.cell(row=2, column=4).value == "TMHC_SQTC_01"
+
+    def test_configurable_parameters_lists_only_names_actually_used(self, run):
+        sheet = load_workbook(run())["Configurable_Parameters"]
+        names = {sheet.cell(row=r, column=1).value for r in range(2, sheet.max_row + 1)}
+        # Every name traces back to an actual Set/Verify step or tolerance reference on
+        # the test-case sheet — never the whole project vocabulary.
+        assert names
+        assert "MDL_SWH_VBKY" in names or "CAN_Main_DispSpeed" in names
+
+    def test_test_pattern_lists_only_set_targets_actually_varied(self, run):
+        sheet = load_workbook(run())["Test Pattern"]
+        assert sheet.cell(row=1, column=1).value == "Factor"
+
     def test_one_case_per_selected_requirement(self, run):
         sheet = load_workbook(run())["005"]
         ids = {

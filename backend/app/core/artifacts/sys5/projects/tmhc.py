@@ -13,6 +13,7 @@ TMHC_PROFILE = ProjectProfile(
     allowed_verbs=("Set", "Wait", "Verify"),
     allow_library_calls=True,
     allow_compound_calls=True,
+    variants=("A1", "A2", "B", "C1", "C2", "C3", "D1", "D2"),
     start_marker="Test_start",
     end_marker="End_of_test",
     require_all_phases=True,

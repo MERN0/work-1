@@ -18,9 +18,35 @@ from __future__ import annotations
 
 import logging
 import os
+import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
+
+
+def _relaunch_as_module() -> None:
+    """`python .../sys5.py` breaks the relative imports below; re-run it as `-m` instead."""
+    import runpy
+    import warnings
+
+    file = Path(__file__).resolve()
+    root = file.parent
+    parts = [file.stem]
+    while (root / "__init__.py").exists():
+        parts.append(root.name)
+        root = root.parent
+
+    sys.path.insert(0, str(root))
+    with warnings.catch_warnings():
+        # runpy warns that this module is already imported (its own package's
+        # __init__.py imports it) — expected here, and harmless.
+        warnings.simplefilter("ignore", RuntimeWarning)
+        runpy.run_module(".".join(reversed(parts)), run_name="__main__")
+
+
+if __name__ == "__main__" and not __package__:
+    _relaunch_as_module()
+    raise SystemExit(0)
 
 from .graph import Sys5Pipeline, prepare_sheet_run
 from .indexing import VocabularyIndex
@@ -48,7 +74,11 @@ def generate(config: dict) -> str:
     ``max_validation_attempts``, ``max_correction_attempts`` and the ``llm_*`` overrides.
     """
     settings = Sys5Settings.from_config(config)
-    logging.getLogger("app.core.artifacts.sys5").setLevel(settings.log_level)
+    # `__package__` is this module's own package (`sys5`) however it is actually mounted
+    # on disk — every submodule's `logging.getLogger(__name__)` is a child of that
+    # logger, so setting the level here reaches all of them regardless of where the
+    # package lives in a given deployment.
+    logging.getLogger(__package__).setLevel(settings.log_level)
 
     logger.info(
         "[sys5] generate(): project=%s user=%s version=%s domain=%s artifact=%s "
@@ -83,6 +113,8 @@ def generate(config: dict) -> str:
 
     if not settings.req_keywords:
         settings.req_keywords = list(profile.req_keywords)
+    if not settings.available_variants:
+        settings.available_variants = list(profile.variants)
 
     ensure_dir(settings.output_dir)
     store = JsonStore(settings.work_dir, new_run_id("sys5"), settings.keep_intermediates)
@@ -224,14 +256,10 @@ def _finalise(produced: list[Path], settings: Sys5Settings) -> Path:
 
 
 if __name__ == "__main__":
-    # Manual test run. Since this module uses package-relative imports, run it as a
-    # module from the `backend` directory:
-    #   cd backend && python -m app.core.artifacts.sys5.sys5
+    # Manual test run: edit the config below, then `python sys5.py`.
     # Requires SYS5_LLM_BASE_URL / SYS5_LLM_API_KEY (or OPENAI_BASE_URL / OPENAI_API_KEY)
-    # to be set, and _input_dir/ to hold the TMHC input workbooks.
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s"
-    )
+    # to be set, and input_folder_path to hold the TMHC input workbooks.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-8s %(message)s")
 
     _config = {
         "project_name": "tmhc_demo",
@@ -249,7 +277,9 @@ if __name__ == "__main__":
             {"agent_name": "verification_agent", "agent_version": "V1.0", "prompt_content": ""},
             {"agent_name": "qa_agent", "agent_version": "V1.0", "prompt_content": ""},
         ],
-        "req_filename": "TE_TMHC_HILS Development & Testing_System Requirements.xlsx",
+        # Leave blank to auto-detect the requirements file; set it only if the input
+        # folder has more than one file that could be mistaken for it.
+        "req_filename": "",
         "req_sheet_name": "005",
     }
 

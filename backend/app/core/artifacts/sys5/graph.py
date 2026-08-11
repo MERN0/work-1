@@ -370,6 +370,8 @@ class Sys5Pipeline:
             username=self.settings.username,
             generated_at=datetime.now(),
             summary=summary,
+            describe=self.index.describe,
+            available_variants=tuple(self.settings.available_variants),
         )
 
         destination = self.settings.output_dir / self.template.filename(context)

@@ -10,7 +10,7 @@ exercised by the same contract test.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -62,6 +62,13 @@ class RenderContext:
     username: str = ""
     generated_at: datetime = field(default_factory=datetime.now)
     summary: RunSummary = field(default_factory=RunSummary)
+    #: Looks up a legal name's description from the vocabulary index. Kept as a plain
+    #: callable rather than the index itself, so a template gets descriptions without
+    #: needing to know about `KnowledgeRecord`/`KnowledgeBase` internals.
+    describe: Callable[[str], str] = lambda name: ""  # noqa: E731
+    #: The project's full list of applicable variants, in canonical order (e.g. A1, A2,
+    #: B, C1...). Used to order — not to invent — the variant columns a template shows.
+    available_variants: tuple[str, ...] = ()
 
     @property
     def title(self) -> str:
@@ -112,8 +119,13 @@ class OutputTemplate(ABC):
         stamp = context.generated_at.strftime("%Y%m%d_%H%M%S")
         return f"sys5_{context.sheet}_{stamp}.xlsx"
 
-    def write_sheet(self, spec: SheetSpec, worksheet, context: RenderContext) -> bool:
+    def write_sheet(
+        self, spec: SheetSpec, worksheet, context: RenderContext, cases: list[TestCase]
+    ) -> bool:
         """Write a non-test-case sheet.
+
+        ``cases`` is the same list :meth:`emit_rows` receives, so an auxiliary sheet can
+        summarise or cross-reference the run without re-deriving it from the workbook.
 
         Return ``True`` when the template handled it; ``False`` to let the writer fall
         back to a stub. Templates override this for their cover page and any auxiliary

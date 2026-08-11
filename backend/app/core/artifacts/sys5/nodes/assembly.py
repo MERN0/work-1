@@ -52,6 +52,7 @@ def build_test_case(
         mode_of_execution=profile.default_mode_of_execution,
         description=plan.description or plan.aspect,
         aspect=plan.aspect,
+        test_type=plan.test_type or "Normal_System",
         steps=[_to_step(s, profile) for s in steps],
     )
 
