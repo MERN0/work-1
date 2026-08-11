@@ -46,6 +46,10 @@ between them.
 Set `ranges_or_boundaries` to the concrete values the case will exercise, written the way \
 they should appear in the steps (for example "10 km/h", "0.5 km/h", "20 deg").
 
+Set `test_type` to "Boundary" for a case that exists specifically to probe a stated \
+limit, edge value or out-of-range condition, and "Normal_System" for ordinary behaviour \
+coverage.
+
 In `coverage_rationale`, state briefly how the set of cases covers the whole requirement, \
 and name explicitly anything the available data does not let you test.
 """

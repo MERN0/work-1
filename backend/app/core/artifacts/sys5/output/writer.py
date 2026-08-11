@@ -49,7 +49,7 @@ def render_workbook(
         name = sheet_safe(template.sheet_name(spec, context))
         worksheet = workbook.create_sheet(title=name)
 
-        if template.write_sheet(spec, worksheet, context):
+        if template.write_sheet(spec, worksheet, context, cases):
             continue
 
         rows = list(template.emit_rows(cases, context))

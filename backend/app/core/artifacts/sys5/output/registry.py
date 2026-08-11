@@ -17,8 +17,9 @@ logger = logging.getLogger(__name__)
 
 _TEMPLATES: dict[str, OutputTemplate] = {}
 
-#: Template packages imported on first resolution.
-_BUILTIN_MODULES = ("app.core.artifacts.sys5.output.templates.tmhc_v1",)
+#: Template packages imported on first resolution, relative to this package (so this
+#: keeps working no matter where the `sys5` package itself is mounted on disk).
+_BUILTIN_MODULES = (".templates.tmhc_v1",)
 
 _loaded = False
 
@@ -45,7 +46,7 @@ def _load_builtins() -> None:
     _loaded = True
     for module in _BUILTIN_MODULES:
         try:
-            import_module(module)
+            import_module(module, package=__package__)
         except Exception as exc:  # noqa: BLE001 - a broken template must be reported, not hidden
             logger.error("[sys5] could not load output template module %s: %s", module, exc)
 

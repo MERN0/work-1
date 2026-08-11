@@ -53,6 +53,11 @@ class ProjectProfile:
     default_mode_of_execution: str = "Automated"
     requirement_id_policy: RequirementIdPolicy = RequirementIdPolicy.SECTION
 
+    #: The full set of applicable variants for this project (e.g. ``A1``, ``A2``, ``B``).
+    #: Used to order the variant columns on the Configurable_Parameters sheet; a case's
+    #: own ``variant`` is not restricted to this list, but a value outside it is logged.
+    variants: tuple[str, ...] = ()
+
     # --- selection ----------------------------------------------------------
     req_keywords: tuple[str, ...] = (
         "sys5 test",

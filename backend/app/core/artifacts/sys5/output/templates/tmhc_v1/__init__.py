@@ -10,14 +10,7 @@ from ....models import TestCase
 from ...base import ColumnSpec, OutputTemplate, RenderContext, Row, SheetSpec
 from ...registry import register
 from ...styles import write_stub
-from .sheets import cover
-
-#: Note written into the auxiliary sheets whose real structure has not been supplied.
-_PENDING = (
-    "Layout pending. This sheet is part of the required workbook structure but its "
-    "template has not been provided yet; it will be filled in once the reference "
-    "layout is available. The test case data itself is complete on the '{sheet}' tab."
-)
+from .sheets import configurable_parameters, cover, item_list, test_pattern
 
 
 class TmhcV1Template(OutputTemplate):
@@ -57,15 +50,10 @@ class TmhcV1Template(OutputTemplate):
     def sheets(self) -> list[SheetSpec]:
         return [
             SheetSpec("cover", "Cover"),
-            SheetSpec("test_pattern", "Test Pattern", stub=True, stub_note=_PENDING),
-            SheetSpec("item_list", "Item_List", stub=True, stub_note=_PENDING),
+            SheetSpec("test_pattern", "Test Pattern"),
+            SheetSpec("item_list", "Item_List"),
             SheetSpec("test_cases"),
-            SheetSpec(
-                "configurable_parameters",
-                "Configurable_Parameters",
-                stub=True,
-                stub_note=_PENDING,
-            ),
+            SheetSpec("configurable_parameters", "Configurable_Parameters"),
         ]
 
     def sheet_name(self, spec: SheetSpec, context: RenderContext) -> str:
@@ -74,9 +62,20 @@ class TmhcV1Template(OutputTemplate):
             return context.profile.tab_name(context.sheet)
         return spec.name or spec.key
 
-    def write_sheet(self, spec: SheetSpec, worksheet: Worksheet, context: RenderContext) -> bool:
+    def write_sheet(
+        self, spec: SheetSpec, worksheet: Worksheet, context: RenderContext, cases: list[TestCase]
+    ) -> bool:
         if spec.key == "cover":
             cover.write(worksheet, context)
+            return True
+        if spec.key == "test_pattern":
+            test_pattern.write(worksheet, context, cases)
+            return True
+        if spec.key == "item_list":
+            item_list.write(worksheet, context, cases)
+            return True
+        if spec.key == "configurable_parameters":
+            configurable_parameters.write(worksheet, context, cases)
             return True
         if spec.stub:
             write_stub(

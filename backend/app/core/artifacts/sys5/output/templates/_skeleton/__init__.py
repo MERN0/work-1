@@ -6,8 +6,7 @@ To add the next customer layout:
 2. Set ``name`` and ``description``, then fill in :meth:`columns` and :meth:`sheets`.
 3. Adjust :meth:`emit_rows` if the row shape differs (one row per step is the norm; a
    layout that puts a whole test case on one row would join the steps here instead).
-4. Add ``"app.core.artifacts.sys5.output.templates.<your_name>"`` to
-   ``registry._BUILTIN_MODULES``.
+4. Add ``".templates.<your_name>"`` to ``registry._BUILTIN_MODULES``.
 5. Select it with ``SYS5_OUTPUT_TEMPLATE=<your_name>`` or ``config["output_template"]``.
 
 Nothing outside this directory needs to change. The contract test in

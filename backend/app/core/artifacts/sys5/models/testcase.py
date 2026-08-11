@@ -80,6 +80,10 @@ class TestCasePlan(BaseModel):
     )
     priority: str = "P1"
     variant: str = ""
+    #: "Boundary" when the case specifically probes a stated limit or edge value,
+    #: "Normal_System" for ordinary behaviour coverage. Drives the Item_List "Test Type"
+    #: column; a classification judgement, not a vocabulary term, so the planner decides it.
+    test_type: str = "Normal_System"
     precondition_outline: str = ""
     action_outline: str = ""
     postcondition_outline: str = ""
@@ -122,6 +126,8 @@ class TestCase(BaseModel):
     mode_of_execution: str = "Automated"
     description: str = ""
     aspect: str = ""
+    #: "Boundary" or "Normal_System" — carried from the plan; used by the Item_List sheet.
+    test_type: str = "Normal_System"
     steps: list[TestStep] = Field(default_factory=list)
     #: Unresolved issues after the repair budget is exhausted. Empty on a clean case.
     issues: list[ValidationIssue] = Field(default_factory=list)

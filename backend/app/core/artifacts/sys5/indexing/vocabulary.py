@@ -93,6 +93,21 @@ class VocabularyIndex:
             return False
         return True if kinds is None else bool(entry.kinds & kinds)
 
+    def describe(self, name: str) -> str:
+        """The description of a legal name, or ``""`` when unknown or undocumented.
+
+        The single point of contact output templates use for descriptions, so a
+        template never needs the raw :class:`KnowledgeRecord` types to render a
+        human-readable "what is this" column.
+        """
+        entry = self.resolve(name)
+        if entry is None:
+            return ""
+        for record in entry.records:
+            if record.description:
+                return record.description
+        return ""
+
     def of_kind(self, *kinds: VocabKind) -> list[KnowledgeRecord]:
         """Every record of the given kinds."""
         result: list[KnowledgeRecord] = []
