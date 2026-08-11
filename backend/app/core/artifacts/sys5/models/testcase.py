@@ -161,6 +161,9 @@ class RunSummary(BaseModel):
     test_cases_generated: int = 0
     test_cases_valid: int = 0
     test_cases_with_issues: int = 0
+    #: Generated but rejected outright — an invented name or unparseable grammar
+    #: survived the repair budget. Not in the workbook; kept in the run's intermediates.
+    test_cases_rejected: int = 0
     llm_calls: int = 0
     output_path: str = ""
 
@@ -170,5 +173,5 @@ class RunSummary(BaseModel):
             f"reqs={self.requirements_selected}/{self.requirements_scanned} "
             f"planned={self.test_cases_planned} generated={self.test_cases_generated} "
             f"valid={self.test_cases_valid} with_issues={self.test_cases_with_issues} "
-            f"llm_calls={self.llm_calls}"
+            f"rejected={self.test_cases_rejected} llm_calls={self.llm_calls}"
         )

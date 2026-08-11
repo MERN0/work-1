@@ -67,6 +67,9 @@ class Sys5State(TypedDict, total=False):
 
     #: Accumulated across parallel branches, hence the reducer.
     generated: Annotated[list[TestCase], operator.add]
+    #: Cases rejected outright — still had a hallucinated name or unparseable grammar
+    #: after the repair budget was spent. Never rendered; kept for the run's audit trail.
+    rejected: Annotated[list[TestCase], operator.add]
 
     # --- outcome ------------------------------------------------------------
     summary: RunSummary

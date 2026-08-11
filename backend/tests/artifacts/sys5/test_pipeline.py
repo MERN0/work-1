@@ -7,6 +7,7 @@ rendering without touching the network.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -174,14 +175,46 @@ class TestRepairLoop:
         repair_prompts = [p for p in fake_model.prompts if "failed automated validation" in p]
         assert repair_prompts == []
 
-    def test_unrepaired_case_is_marked_rather_than_dropped(self, run, fake_model):
+    def test_unrepaired_soft_issue_is_marked_rather_than_dropped(self, run, fake_model, monkeypatch):
+        """A case whose only remaining problem is value/wording-level (not a name or
+        grammar issue) still ships, flagged, so a reviewer can see what needs a human."""
+        from app.core.artifacts.sys5 import graph as graph_module
+
+        monkeypatch.setattr(graph_module, "HARD_ISSUE_CODES", frozenset())
         fake_model.fail_first_generation = True
         sheet = load_workbook(run(max_correction_attempts=0))["005"]
         remarks = " ".join(
             str(sheet.cell(row=r, column=16).value or "") for r in range(2, sheet.max_row + 1)
         )
-        # The case still ships, flagged, so a reviewer can see what needs a human.
         assert "VALIDATION_FAILED" in remarks
+
+    def test_unrepaired_hard_violations_are_rejected_not_shipped(self, run, fake_model, tmp_path):
+        """A case with an invented name or disallowed verb still wrong after the repair
+        budget is spent must not reach the workbook at all — not even flagged, since
+        cutting just those steps would leave the rest of the case making no sense."""
+        fake_model.fail_first_generation = True
+        sheet = load_workbook(run(max_correction_attempts=0))["005"]
+
+        texts = [
+            sheet.cell(row=r, column=10).value
+            for r in range(2, sheet.max_row + 1)
+            if sheet.cell(row=r, column=10).value
+        ]
+        assert not any("Nonexistent_Signal" in str(t) for t in texts)
+        assert not any(str(t).startswith("Read ") for t in texts)
+
+        ids = {
+            sheet.cell(row=r, column=1).value
+            for r in range(2, sheet.max_row + 1)
+            if sheet.cell(row=r, column=1).value
+        }
+        # Only the requirement whose first draft was already valid survived to the sheet.
+        assert len(ids) == 1
+
+        rejected_path = next((tmp_path / "work").rglob("rejected_005.json"))
+        payload = json.loads(rejected_path.read_text(encoding="utf-8"))
+        assert len(payload) == 1
+        assert "UNKNOWN_NAME" in {issue["code"] for issue in payload[0]["issues"]}
 
 
 class TestStructuredOutputLadder:
@@ -234,8 +267,6 @@ class TestMultiSheetRun:
 
     def test_feature_tracing_does_not_leak_across_sheets(self, run, tmp_path: Path):
         """A signal marked only against 006 must not appear in the 005 workbook."""
-        import json
-
         run(req_sheet_name="005")
         traced = json.loads(
             next((tmp_path / "work").rglob("plans_005.json")).read_text(encoding="utf-8")
@@ -287,8 +318,6 @@ class TestFailFast:
 class TestGeneratedCasesValidate:
     def test_rendered_cases_pass_a_fresh_validation_pass(self, run, index, profile, tmp_path):
         """Re-validate from the persisted JSON, independently of the run that made it."""
-        import json
-
         run()
         payload = json.loads(
             next((tmp_path / "work").rglob("generated_005.json")).read_text(encoding="utf-8")

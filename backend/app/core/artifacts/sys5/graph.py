@@ -60,6 +60,27 @@ logger = logging.getLogger(__name__)
 #: Retry transport-level failures inside a node before the branch is abandoned.
 NODE_RETRY = RetryPolicy(max_attempts=2, initial_interval=1.0, backoff_factor=2.0)
 
+#: Issues meaning some step has no legitimate identity — a name, grammar form or
+#: reference that provably does not exist in the source sheets. If any of these survive
+#: the repair budget, the whole case is rejected rather than shipped (flagged or with the
+#: offending steps cut): a repaired case's pre/action/post flow depends on every step, so
+#: removing just the bad ones can leave the rest making no sense. Value- or wording-level
+#: issues (out of range, a thin remark) are not in this set — those keep a real step
+#: identity and are shipped flagged instead, via `_mark_unresolved`.
+HARD_ISSUE_CODES = frozenset(
+    {
+        "BAD_GRAMMAR",
+        "UNKNOWN_NAME",
+        "UNKNOWN_COMPOUND",
+        "UNKNOWN_LIBRARY",
+        "WRONG_NAME_KIND",
+        "BAD_LIBRARY_ARGS",
+        "UNKNOWN_TOLERANCE",
+        "LIBRARY_NOT_ALLOWED",
+        "COMPOUND_NOT_ALLOWED",
+    }
+)
+
 
 @dataclass(slots=True)
 class SheetRun:
@@ -229,6 +250,20 @@ class Sys5Pipeline:
         case, result = self._validate_and_repair(case, task, identity, case_index)
         case.issues = list(result.issues)
 
+        hard = HARD_ISSUE_CODES.intersection(result.codes())
+        if hard:
+            # A name, grammar form or reference that is still wrong after the repair
+            # budget is spent has no legal fix — cutting just those steps would leave a
+            # case whose remaining pre/action/post flow no longer makes sense. The whole
+            # case is rejected instead; nothing invented reaches the workbook, and the
+            # rejected case is still persisted to the run's intermediates for review.
+            logger.warning(
+                "[sys5]   rejecting %s: unresolved %s after the repair budget was spent",
+                case.tc_id,
+                sorted(hard),
+            )
+            return {"rejected": [case]}
+
         if result.ok:
             logger.info("[sys5]   %s ok (%d steps)", case.tc_id, len(case.steps))
         else:
@@ -344,15 +379,18 @@ class Sys5Pipeline:
         for position, case in enumerate(cases, start=1):
             case.tc_id = self.profile.test_case_id(position, state["identity"].label)
 
+        rejected: list[TestCase] = state.get("rejected") or []
+
         summary = RunSummary(
             sheet=state["sheet"],
             feature_title=state["identity"].title,
             requirements_scanned=len(state.get("rows") or []),
             requirements_selected=len(state.get("requirements") or []),
             test_cases_planned=len(state.get("tasks") or []),
-            test_cases_generated=len(cases),
+            test_cases_generated=len(cases) + len(rejected),
             test_cases_valid=sum(1 for c in cases if c.is_valid),
             test_cases_with_issues=sum(1 for c in cases if not c.is_valid),
+            test_cases_rejected=len(rejected),
             llm_calls=self.caller.calls if self.caller else 0,
         )
 
@@ -375,6 +413,8 @@ class Sys5Pipeline:
         summary.output_path = str(result.path)
 
         self.store.save(f"generated_{state['sheet']}", cases)
+        if rejected:
+            self.store.save(f"rejected_{state['sheet']}", rejected)
         self.store.save(
             f"summary_{state['sheet']}",
             {"summary": summary, "issues": summarise([ValidationResult(issues=c.issues) for c in cases])},
