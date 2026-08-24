@@ -136,6 +136,7 @@ class Sys5Settings(BaseModel):
     project_profile: str = "tmhc"
 
     # --- pipeline -----------------------------------------------------------
+    max_cases_per_requirement: int = 5
     max_validation_attempts: int = 2
     max_correction_attempts: int = 1
     keep_intermediates: bool = True
@@ -212,6 +213,9 @@ class Sys5Settings(BaseModel):
             output_template=setting("output_template", "SYS5_OUTPUT_TEMPLATE", default="").strip(),
             output_format=setting("output_format", "SYS5_OUTPUT_FORMAT", default="excel").strip().lower(),
             project_profile=setting("project_profile", "SYS5_PROJECT_PROFILE", default="").strip(),
+            max_cases_per_requirement=setting(
+                "max_cases_per_requirement", "SYS5_MAX_CASES_PER_REQUIREMENT", default=5, cast=int
+            ),
             max_validation_attempts=setting(
                 "max_validation_attempts", "SYS5_MAX_VALIDATION_ATTEMPTS", default=2, cast=int
             ),

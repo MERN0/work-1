@@ -40,8 +40,8 @@ def valid_steps() -> list[TestStep]:
     ]
 
 
-def codes_for(steps: list[TestStep], index, plan=None) -> list[str]:
-    return validate_case(case_of(*steps), index, TMHC_PROFILE, plan).codes()
+def codes_for(steps: list[TestStep], index, plan=None, scoped_names=None) -> list[str]:
+    return validate_case(case_of(*steps), index, TMHC_PROFILE, plan, scoped_names).codes()
 
 
 class TestGrammar:
@@ -133,6 +133,49 @@ class TestVocabularyEnforcement:
         result = validate_case(case_of(*steps), index, TMHC_PROFILE)
         issue = next(i for i in result.issues if i.code == "UNKNOWN_NAME")
         assert "Accelerator_Sensor" in issue.suggestion
+
+
+class TestScopedVocabulary:
+    """A step may reference a name that is real but was never traced to this
+    requirement — e.g. a signal that belongs to a different feature or a different
+    requirement on the same sheet. Global legality must not be enough to pass."""
+
+    #: Every name the valid steps use, except the CAN signal under test.
+    SCOPE_WITHOUT_CAN_SIGNAL = {"MDL_SWH_VBKY", "MDL_SEN_Accelerator_Pedal", "Config_Tol_Spd"}
+
+    def test_globally_legal_but_out_of_scope_name_is_rejected(self, index):
+        codes = codes_for(
+            valid_steps(), index, scoped_names=self.SCOPE_WITHOUT_CAN_SIGNAL
+        )
+        assert "OUT_OF_SCOPE_NAME" in codes
+
+    def test_in_scope_name_still_passes(self, index):
+        scope = self.SCOPE_WITHOUT_CAN_SIGNAL | {"CAN_Main_DispSpeed"}
+        codes = codes_for(valid_steps(), index, scoped_names=scope)
+        assert "OUT_OF_SCOPE_NAME" not in codes
+
+    def test_no_scope_given_falls_back_to_global_legality_only(self, index):
+        # Backward compatible: omitting scoped_names checks only that the name is real
+        # anywhere in the project, as before this check existed.
+        assert "OUT_OF_SCOPE_NAME" not in codes_for(valid_steps(), index)
+
+    def test_suggestion_is_drawn_from_the_scope_not_the_whole_project(self, index):
+        result = validate_case(
+            case_of(*valid_steps()), index, TMHC_PROFILE, scoped_names=self.SCOPE_WITHOUT_CAN_SIGNAL
+        )
+        issue = next(i for i in result.issues if i.code == "OUT_OF_SCOPE_NAME")
+        # The signal actually referenced (CAN_Main_DispSpeed) must never appear in its
+        # own suggestion, and only in-scope names may be suggested.
+        assert "CAN_Main_DispSpeed" not in issue.suggestion
+
+    def test_suggestion_shows_a_real_readable_name_not_a_normalized_key(self):
+        from app.core.artifacts.sys5.validation.vocabulary import _suggest_within
+
+        # scope maps normalized keys -> real display spelling, as check_vocabulary builds
+        # it; the target is a near-miss of one entry, so the substring branch fires.
+        scope = {"mdlsenacceleratorpedal": "MDL_SEN_Accelerator_Pedal"}
+        suggestions = _suggest_within("MDL_SEN_Accelerator_Pedals", scope)
+        assert suggestions == ["MDL_SEN_Accelerator_Pedal"]
 
 
 class TestStructure:

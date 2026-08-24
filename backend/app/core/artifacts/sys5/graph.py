@@ -157,7 +157,9 @@ class Sys5Pipeline:
         if self.caller is None:
             return [_fallback_plan(requirement)]
 
-        prompt = planner_prompt(requirement, feature_context, context_text)
+        prompt = planner_prompt(
+            requirement, feature_context, context_text, self.settings.max_cases_per_requirement
+        )
         try:
             response = self.caller.invoke(
                 PlanResponse, self.system, prompt, tag=f"plan:{requirement.requirement_id}"
@@ -178,6 +180,8 @@ class Sys5Pipeline:
             )
             return [_fallback_plan(requirement)]
 
+        plans = self._cap_plans(plans, requirement.requirement_id)
+
         logger.info(
             "[sys5]   %s -> %d case(s): %s",
             requirement.requirement_id,
@@ -185,6 +189,36 @@ class Sys5Pipeline:
             "; ".join(p.aspect for p in plans),
         )
         return plans
+
+    def _cap_plans(self, plans: list[TestCasePlan], requirement_id: str) -> list[TestCasePlan]:
+        """Hard backstop on case count, independent of what the planner returned.
+
+        The prompt asks for at most ``max_cases_per_requirement`` already, but a model
+        must never be trusted to enforce its own limit, so this keeps the highest-value
+        cases (priority, then boundary cases) if it returns more anyway.
+        """
+        limit = self.settings.max_cases_per_requirement
+        if len(plans) <= limit:
+            return plans
+
+        def rank(indexed: tuple[int, TestCasePlan]) -> tuple[str, int, int]:
+            position, plan = indexed
+            priority = (plan.priority or "P1").strip().upper() or "P1"
+            is_normal = 0 if plan.test_type == "Boundary" else 1
+            return (priority, is_normal, position)
+
+        ordered = sorted(enumerate(plans), key=rank)
+        kept = sorted(ordered[:limit], key=lambda item: item[0])
+        dropped = [plan.aspect for _, plan in ordered[limit:]]
+
+        logger.warning(
+            "[sys5]   %s: planner returned %d case(s), capped to %d; dropped: %s",
+            requirement_id,
+            len(plans),
+            limit,
+            "; ".join(dropped),
+        )
+        return [plan for _, plan in kept]
 
     def fan_out(self, state) -> list[Send] | list[str]:
         """One ``Send`` branch per planned test case.
@@ -295,7 +329,8 @@ class Sys5Pipeline:
         ``max_correction_attempts`` how many repair calls are made; the loop ends as
         soon as a case is clean.
         """
-        result = validate_case(case, self.index, self.profile, task.plan)
+        scoped_names = set(task.vocabulary)
+        result = validate_case(case, self.index, self.profile, task.plan, scoped_names)
         corrections = 0
 
         for _ in range(max(0, self.settings.max_validation_attempts - 1)):
@@ -315,7 +350,7 @@ class Sys5Pipeline:
             if repaired is None:
                 break
             case = repaired
-            result = validate_case(case, self.index, self.profile, task.plan)
+            result = validate_case(case, self.index, self.profile, task.plan, scoped_names)
 
         return case, result
 

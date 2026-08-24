@@ -18,24 +18,38 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 
 
-def _plan_payload() -> dict:
-    return {
-        "coverage_rationale": "Covers the stated limit in the forward direction and the "
-        "return to zero when the pedal is released.",
-        "test_cases": [
+def _plan_payload(case_count: int = 1) -> dict:
+    """``case_count`` synthetic planned cases, cycling priority and test type.
+
+    ``case_count`` lets a test ask the fake planner for more cases than the configured
+    cap, to exercise ``Sys5Pipeline._cap_plans`` truncation. The first case always
+    matches the original single-case payload so existing assertions about its content
+    keep working when ``case_count == 1``.
+    """
+    priorities = ["P3", "P2", "P1"]
+    types = ["Normal_System", "Boundary"]
+    cases = []
+    for i in range(case_count):
+        cases.append(
             {
-                "aspect": "maximum speed limit at full accelerator",
+                "aspect": "maximum speed limit at full accelerator"
+                if i == 0
+                else f"synthetic aspect {i + 1}",
                 "description": "Verify the displayed speed is clamped to 10 km/h with the "
                 "accelerator fully pressed.",
-                "ranges_or_boundaries": ["10 (Config_Tol_Spd)"],
-                "priority": "P1",
+                "ranges_or_boundaries": ["10 (Config_Tol_Spd)"] if i == 0 else [],
+                "priority": "P1" if i == 0 else priorities[i % len(priorities)],
                 "variant": "A1",
-                "test_type": "Boundary",
+                "test_type": "Boundary" if i == 0 else types[i % len(types)],
                 "precondition_outline": "Power on, forward, park brake released",
                 "action_outline": "Press the accelerator and check the displayed speed",
                 "postcondition_outline": "Release the pedal and power down",
             }
-        ],
+        )
+    return {
+        "coverage_rationale": "Covers the stated limit in the forward direction and the "
+        "return to zero when the pedal is released.",
+        "test_cases": cases,
     }
 
 
@@ -144,6 +158,9 @@ class FakeChatModel(BaseChatModel):
     #: returns valid ones — exercising the validate/repair loop.
     fail_first_generation: bool = False
 
+    #: How many cases the fake planner returns per requirement.
+    plan_case_count: int = 1
+
     #: Populated as calls arrive, so a test can assert what was asked.
     prompts: list[str] = []
     generation_calls: int = 0
@@ -177,8 +194,8 @@ class FakeChatModel(BaseChatModel):
         if "failed automated validation" in prompt:
             return json.dumps(_valid_steps())
 
-        if "Plan every SYS5 test case" in prompt:
-            return json.dumps(_plan_payload())
+        if "Plan at most" in prompt:
+            return json.dumps(_plan_payload(self.plan_case_count))
 
         if "Write the ordered steps" in prompt:
             self.generation_calls += 1

@@ -26,8 +26,9 @@ test you have in mind cannot be expressed with them, do not plan it.
 {available}
 
 ## Your task
-Plan every SYS5 test case this requirement needs — not a representative sample, all of \
-them. Work through the requirement clause by clause and enumerate:
+Plan at most {max_cases} SYS5 test cases for this requirement — this is a hard limit, \
+not a target to aim under. Work through the requirement clause by clause to find every \
+testable aspect:
 
 - each distinct behaviour it states;
 - each numeric range, limit or threshold, and its boundaries (at the limit, just inside, \
@@ -38,10 +39,12 @@ unloaded, each configuration value);
 - the negative cases: what must *not* happen, and what happens when the condition is \
 absent or the input is out of range.
 
-One test case covers one aspect. A requirement stating a limit in both travel directions \
-needs at least two cases, not one that changes direction halfway through. Where the \
-requirement gives a configurable range, cover its minimum, its maximum and a value \
-between them.
+Then choose which {max_cases} matter most. If the full enumeration fits within \
+{max_cases}, plan all of it. If it does not, prioritise: keep the cases that probe a \
+stated limit, edge value or out-of-range condition, and cover every direction/mode the \
+requirement names, ahead of incidental or overlapping variations. One test case covers \
+one aspect — do not merge two aspects (e.g. both travel directions) into one case just \
+to stay under the limit; drop the lower-priority aspect instead.
 
 Set `ranges_or_boundaries` to the concrete values the case will exercise, written the way \
 they should appear in the steps (for example "10 km/h", "0.5 km/h", "20 deg").
@@ -50,13 +53,14 @@ Set `test_type` to "Boundary" for a case that exists specifically to probe a sta
 limit, edge value or out-of-range condition, and "Normal_System" for ordinary behaviour \
 coverage.
 
-In `coverage_rationale`, state briefly how the set of cases covers the whole requirement, \
-and name explicitly anything the available data does not let you test.
+In `coverage_rationale`, state briefly how the set of cases covers the requirement, and \
+name explicitly anything the available data does not let you test *and* anything you \
+dropped to stay within {max_cases} cases.
 """
 
 
 def planner_prompt(
-    requirement: Requirement, feature: FeatureContext, available: str
+    requirement: Requirement, feature: FeatureContext, available: str, max_cases: int
 ) -> str:
     """Build the user message for the planning call."""
     return _TEMPLATE.format(
@@ -71,4 +75,5 @@ def planner_prompt(
         text=requirement.text,
         criteria=requirement.verification_criteria or "-",
         available=available,
+        max_cases=max_cases,
     )

@@ -184,6 +184,58 @@ class TestRepairLoop:
         assert "VALIDATION_FAILED" in remarks
 
 
+class TestCaseCap:
+    """The planner's case count is capped even when the model ignores the limit."""
+
+    def test_cases_are_capped_at_the_configured_maximum(self, run, fake_model, tmp_path: Path):
+        import json
+
+        fake_model.plan_case_count = 7
+        run(max_cases_per_requirement=5)
+
+        plans = json.loads(
+            next((tmp_path / "work").rglob("plans_005.json")).read_text(encoding="utf-8")
+        )
+        by_requirement: dict[str, list[str]] = {}
+        for entry in plans:
+            by_requirement.setdefault(entry["requirement"], []).append(entry["plan"]["aspect"])
+
+        assert by_requirement, "expected at least one requirement to have planned cases"
+        for requirement_id, aspects in by_requirement.items():
+            assert len(aspects) <= 5, f"{requirement_id} kept {len(aspects)} cases, expected <=5"
+
+    def test_lower_priority_cases_are_dropped_first(self, run, fake_model, tmp_path: Path):
+        """Of the 7 synthetic cases the fake planner offers, the two P3 ones must be the
+        ones truncated — every P1/P2 case, and every Boundary case, ranks above them."""
+        import json
+
+        fake_model.plan_case_count = 7
+        run(max_cases_per_requirement=5)
+
+        plans = json.loads(
+            next((tmp_path / "work").rglob("plans_005.json")).read_text(encoding="utf-8")
+        )
+        kept_aspects = {entry["plan"]["aspect"] for entry in plans}
+
+        # Cases 4 and 7 (1-indexed) are the two P3 ones in the synthetic plan payload.
+        assert "synthetic aspect 4" not in kept_aspects
+        assert "synthetic aspect 7" not in kept_aspects
+
+    def test_default_cap_is_five_when_not_overridden(self, run, fake_model, tmp_path: Path):
+        import json
+
+        fake_model.plan_case_count = 7
+        run()
+
+        plans = json.loads(
+            next((tmp_path / "work").rglob("plans_005.json")).read_text(encoding="utf-8")
+        )
+        by_requirement: dict[str, int] = {}
+        for entry in plans:
+            by_requirement[entry["requirement"]] = by_requirement.get(entry["requirement"], 0) + 1
+        assert all(count <= 5 for count in by_requirement.values())
+
+
 class TestStructuredOutputLadder:
     def test_falls_back_to_text_when_the_endpoint_lacks_structured_output(
         self, run, fake_model

@@ -43,8 +43,13 @@ def validate_case(
     index: VocabularyIndex,
     profile: ProjectProfile,
     plan: TestCasePlan | None = None,
+    scoped_names: set[str] | None = None,
 ) -> ValidationResult:
     """Validate one test case against every rule.
+
+    ``scoped_names`` restricts ``Set``/``Verify`` targets to the names actually traced to
+    this requirement (see :func:`check_vocabulary`); omitted, only global legality is
+    checked.
 
     Order matters: structure first (a case with no steps has nothing else worth
     checking), then grammar and vocabulary, then semantics — which needs the parse the
@@ -52,7 +57,7 @@ def validate_case(
     """
     issues: list[ValidationIssue] = list(check_structure(case, profile))
 
-    vocabulary_issues, parsed = check_vocabulary(case, index, profile)
+    vocabulary_issues, parsed = check_vocabulary(case, index, profile, scoped_names)
     issues.extend(vocabulary_issues)
     issues.extend(check_semantics(case, parsed, index))
 

@@ -24,9 +24,12 @@ def load_knowledge_base(inventory: InputInventory) -> KnowledgeBase:
 
     A parser that raises is logged and skipped: one malformed supporting sheet degrades
     the traceable context but must not abort a run, and the validator will reject any
-    step that relies on the data that failed to load.
+    step that relies on the data that failed to load. The failure is reported loudly
+    (``ERROR``, plus a summary line) because a degraded knowledge base is the leading
+    cause of steps that end up using the wrong — or no — signal for their requirement.
     """
     knowledge = KnowledgeBase()
+    failures: list[tuple[str, str]] = []
 
     handlers = {
         SourceKind.COMM_MATRIX: lambda s: knowledge.can_signals.extend(
@@ -74,7 +77,15 @@ def load_knowledge_base(inventory: InputInventory) -> KnowledgeBase:
         try:
             handler(sheet)
         except Exception as exc:  # noqa: BLE001 - one bad sheet must not kill the run
-            logger.warning("[sys5] failed to parse %s (%s): %s", sheet.label, sheet.kind, exc)
+            logger.error("[sys5] failed to parse %s (%s): %s", sheet.label, sheet.kind, exc)
+            failures.append((sheet.label, str(exc)))
+
+    if failures:
+        logger.error(
+            "[sys5] %d supporting sheet(s) failed to parse and were skipped: %s",
+            len(failures),
+            "; ".join(f"{label} ({error})" for label, error in failures),
+        )
 
     logger.info("[sys5] knowledge base: %s", knowledge.stats())
     return knowledge

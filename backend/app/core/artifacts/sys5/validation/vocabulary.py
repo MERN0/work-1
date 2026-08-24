@@ -11,6 +11,7 @@ from __future__ import annotations
 from ..indexing import VocabularyIndex
 from ..models import LibraryFunction, TestCase, ValidationIssue, VocabKind
 from ..projects import ProjectProfile
+from ..utils.text import normalize
 from .grammar import ParsedStep, StepKind, parse_all
 
 #: Kinds a ``Set`` or ``Verify`` target may resolve to.
@@ -25,15 +26,32 @@ _ADDRESSABLE = {
 
 
 def check_vocabulary(
-    case: TestCase, index: VocabularyIndex, profile: ProjectProfile
+    case: TestCase,
+    index: VocabularyIndex,
+    profile: ProjectProfile,
+    scoped_names: set[str] | None = None,
 ) -> tuple[list[ValidationIssue], list[ParsedStep]]:
     """Validate grammar and name legality together.
+
+    ``scoped_names`` is the set of names traced to this specific requirement (the same
+    list rendered into the generator/repair prompts as the "legal names" the model was
+    told to use) — normalized here, so callers may pass names in any casing/spelling.
+    When given, a ``Set``/``Verify`` target that is legal *somewhere* in the project but
+    was not traced to this requirement is flagged too — a name being real is not the
+    same as it being the right one for this test case.
 
     Returns the issues plus the parsed steps, so callers that also need the parse (the
     semantic checks) do not repeat the work.
     """
     issues: list[ValidationIssue] = []
     parsed = parse_all(case.steps, profile.allowed_verbs)
+    # Normalized -> original spelling, so a suggestion can show a real name rather than
+    # its stripped-down comparison key.
+    scope = (
+        {normalize(n): n for n in scoped_names if normalize(n)}
+        if scoped_names is not None
+        else None
+    )
 
     for step, node in zip(case.steps, parsed, strict=True):
         if node.kind is StepKind.INVALID:
@@ -52,7 +70,7 @@ def check_vocabulary(
 
         match node.kind:
             case StepKind.SET | StepKind.VERIFY:
-                issues.extend(_check_target(step.step_no, node, index))
+                issues.extend(_check_target(step.step_no, node, index, scope))
             case StepKind.COMPOUND:
                 issues.extend(_check_compound(step.step_no, node, index, profile))
             case StepKind.LIBRARY:
@@ -63,8 +81,28 @@ def check_vocabulary(
     return issues, parsed
 
 
+def _suggest_within(target: str, scope: dict[str, str], limit: int = 3) -> list[str]:
+    """Nearest *display* names to ``target`` drawn only from ``scope`` (normalized -> original).
+
+    Used when a name is legal in the project but out of scope for this requirement, so
+    the repair round is pointed at a name it may actually use, not just any real one.
+    """
+    target_norm = normalize(target)
+    if not target_norm:
+        return []
+    substring = [
+        display for key, display in scope.items() if target_norm in key or key in target_norm
+    ]
+    if substring:
+        return substring[:limit]
+    from rapidfuzz import fuzz, process
+
+    matches = process.extract(target_norm, list(scope.keys()), scorer=fuzz.WRatio, limit=limit)
+    return [scope[key] for key, score, _ in matches if score >= 70]
+
+
 def _check_target(
-    step_no: int, node: ParsedStep, index: VocabularyIndex
+    step_no: int, node: ParsedStep, index: VocabularyIndex, scoped_names: dict[str, str] | None
 ) -> list[ValidationIssue]:
     entry = index.resolve(node.target)
     if entry is None:
@@ -92,6 +130,24 @@ def _check_target(
                 step_no=step_no,
                 message=f"{node.target!r} is a {kinds}, which cannot be a {node.verb} target",
                 suggestion="reference a signal, command or parameter instead",
+            )
+        ]
+
+    if scoped_names is not None and normalize(node.target) not in scoped_names:
+        suggestions = _suggest_within(node.target, scoped_names)
+        return [
+            ValidationIssue(
+                code="OUT_OF_SCOPE_NAME",
+                step_no=step_no,
+                message=(
+                    f"{node.target!r} is a real name but was not traced to this "
+                    "requirement — it belongs elsewhere"
+                ),
+                suggestion=(
+                    f"use one of: {', '.join(suggestions)}"
+                    if suggestions
+                    else "use a name from this requirement's own reference data"
+                ),
             )
         ]
 

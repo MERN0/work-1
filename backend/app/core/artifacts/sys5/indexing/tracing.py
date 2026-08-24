@@ -281,7 +281,14 @@ def trace_requirement(
         compounds=compound_tracer.ranked(),
         all_compound_names=[c.name for c in knowledge.compounds],
     )
-    logger.debug("[sys5] traced %s -> %s", requirement.requirement_id, pack.stats())
+    stats = pack.stats()
+    logger.info("[sys5] traced %s -> %s", requirement.requirement_id, stats)
+    if stats["io_signals"] + stats["can_signals"] + stats["commands"] == 0:
+        logger.warning(
+            "[sys5] %s traced no I/O signals, CAN signals or commands — its steps will "
+            "have nothing concrete to reference beyond the always-available model signals",
+            requirement.requirement_id,
+        )
     return pack
 
 
