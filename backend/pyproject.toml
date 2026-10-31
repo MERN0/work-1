@@ -9,7 +9,7 @@ description = "Agentic generation of SYS5 System Qualification Test Cases from S
 requires-python = ">=3.11"
 dependencies = [
     "langgraph==1.2.10",
-    "langgraph-checkpoint-sqlite==3.1.1",
+    "langgraph-checkpoint-sqlite==3.1.2",
     "langchain-core==1.5.3",
     "langchain-openai==1.4.2",
     "pydantic==2.13.4",

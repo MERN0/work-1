@@ -1,7 +1,7 @@
 # SYS5 artifact generator — pinned to the versions verified against PyPI (Aug 2026).
 # LangGraph and LangChain are both on 1.x; the 0.x APIs are NOT compatible.
 langgraph==1.2.10
-langgraph-checkpoint-sqlite==3.1.1
+langgraph-checkpoint-sqlite==3.1.2
 langchain-core==1.5.3
 langchain-openai==1.4.2
 
